@@ -1,0 +1,20 @@
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_LINK_MODE=copy
+
+WORKDIR /app
+
+COPY pyproject.toml /app/pyproject.toml
+
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir uv \
+    && uv lock \
+    && uv sync --frozen --no-dev
+
+COPY . /app
+
+EXPOSE 8080
+
+CMD ["uv", "run", "python", "main.py"]

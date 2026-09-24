@@ -1,0 +1,45 @@
+[project]
+name = "vino-back"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aio-pika==10.0.1",
+    "aiormq==7.0.0",
+    "annotated-doc==0.0.5",
+    "annotated-types==0.8.0",
+    "anyio==4.15.1",
+    "argon2-cffi==25.1.0",
+    "argon2-cffi-bindings==26.1.0",
+    "asyncpg==0.31.0",
+    "beautifulsoup4==4.15.0",
+    "certifi==2026.7.22",
+    "cffi==2.1.1",
+    "click==8.5.0",
+    "fastapi==0.141.1",
+    "h11==0.16.0",
+    "httpcore==1.0.9",
+    "httpx==0.28.1",
+    "idna==3.19",
+    "loguru==0.7.3",
+    "minio==7.2.20",
+    "multidict==6.9.1",
+    "pamqp==4.0.1",
+    "propcache==0.5.4",
+    "pycparser==3.0",
+    "pycryptodome==3.23.0",
+    "pydantic==2.13.5",
+    "pydantic-core==2.46.5",
+    "pydantic-settings==2.15.0",
+    "python-dotenv==1.2.3",
+    "rabbitmq==0.2.0",
+    "soupsieve==2.10",
+    "sqlalchemy==2.0.52",
+    "starlette==1.6.0",
+    "typing-extensions==4.16.0",
+    "typing-inspection==0.4.4",
+    "urllib3==2.8.0",
+    "uvicorn==0.52.4",
+    "yarl==1.25.1"
+]
