@@ -60,8 +60,8 @@ class RabbitMQConfig(BaseSettings):
     password: str = Field(default="guest")
     virtual_host: str = Field(default="/")
     # recognition_queue: str = Field(default="recognition.tasks")
-    task_publish_queue: str = Field(default="recognition.tasks")
-    task_result_queue: str = Field(default="recognition.results")
+    task_publish_queue: str = Field(default="recognition.tasks") # Backend WRITES tasks to this queue, Worker READS from this queue
+    task_result_queue: str = Field(default="recognition.results") # Worker WRITES results to this queue, Backend READS from this queue
     @property
     def url(self) -> str:
         vhost = self.virtual_host if self.virtual_host.startswith("/") else f"/{self.virtual_host}"
