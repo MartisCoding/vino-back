@@ -15,19 +15,16 @@ class RecognitionTaskService:
         task_repository: RecognitionTaskRepository,
         wine_repository: WineRepository,
         rabbitmq_client: RabbitMQClient,
-        queue_name: str,
     ):
         self._task_repository = task_repository
         self._wine_repository = wine_repository
         self._rabbitmq_client = rabbitmq_client
-        self._queue_name = queue_name
 
     async def create_and_send_task(self, uploaded_image_id: int) -> RecognitionTask:
         logger.debug("Creating and sending recognition task for uploaded_image_id={}", uploaded_image_id)
         task = await self._task_repository.create(uploaded_image_id=uploaded_image_id, status="pending")
 
-        await self._rabbitmq_client.publish_json(
-            queue_name=self._queue_name,
+        await self._rabbitmq_client.publish_task(
             payload={
                 "task_id": task.id,
                 "uploaded_image_id": task.uploaded_image_id,

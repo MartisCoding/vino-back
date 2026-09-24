@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -8,7 +9,7 @@ from src.config import Config
 from src.resources import ConnectionManager, create_minio_client, create_rabbitmq_client
 from src.routes import recognition_router
 from src.services import ServiceFactory
-
+from src.consumer.recognition_result_consumer import RecognitionResultConsumer
 config = Config()
 
 def init_logger():
@@ -27,6 +28,7 @@ def init_logger():
             serialize=config.logging.serialize,
         )
 
+
 @asynccontextmanager
 async def startup_shutdown_indicate(app: FastAPI):
     logger.info("Starting application")
@@ -44,6 +46,15 @@ async def startup_shutdown_indicate(app: FastAPI):
         rabbitmq_client=rabbitmq_client,
     )
     logger.debug("ServiceFactory created with config: {}", config)
+    
+    consumer = RecognitionResultConsumer(
+        connection_manager=connection_manager,
+        service_factory=service_factory,
+    )
+    
+    consumer_task = asyncio.create_task(
+        rabbitmq_client.consume_result(consumer.handle)
+    )
 
     app.state.config = config
     app.state.connection_manager = connection_manager
@@ -52,11 +63,20 @@ async def startup_shutdown_indicate(app: FastAPI):
     app.state.service_factory = service_factory
 
     logger.info("Application resources initialized")
+    
     yield
+    logger.info("Stopping application")
+    
+    consumer_task.cancel()
+
+    try:
+        await consumer_task
+    except asyncio.CancelledError:
+        pass
 
     await rabbitmq_client.close()
     await connection_manager.close()
-    logger.info("Stopping application")
+    
 
 def create_app() -> FastAPI:
     app = FastAPI(

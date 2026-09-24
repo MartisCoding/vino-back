@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from loguru import logger
+from functools import lru_cache
 
 class ParserConfig(BaseSettings):
     base_url: str = Field(default="https://vino-svoe.ru")
@@ -58,8 +59,9 @@ class RabbitMQConfig(BaseSettings):
     user: str = Field(default="guest")
     password: str = Field(default="guest")
     virtual_host: str = Field(default="/")
-    recognition_queue: str = Field(default="recognition.tasks")
-
+    # recognition_queue: str = Field(default="recognition.tasks")
+    task_publish_queue: str = Field(default="recognition.tasks")
+    task_result_queue: str = Field(default="recognition.results")
     @property
     def url(self) -> str:
         vhost = self.virtual_host if self.virtual_host.startswith("/") else f"/{self.virtual_host}"
@@ -84,7 +86,8 @@ class Config(BaseSettings):
     minio: MinioConfig = Field(default_factory=MinioConfig)
     rabbitmq: RabbitMQConfig = Field(default_factory=RabbitMQConfig)
     parser: ParserConfig = Field(default_factory=ParserConfig)
-    
+ 
+@lru_cache   
 def config() -> Config:
     logger.debug("Building application config from environment")
     return Config()
@@ -125,7 +128,8 @@ def dump_env_string(config: Config) -> str:
         f"RABBITMQ__USER={config.rabbitmq.user}\n"
         f"RABBITMQ__PASSWORD={config.rabbitmq.password}\n"
         f"RABBITMQ__VIRTUAL_HOST={config.rabbitmq.virtual_host}\n"
-        f"RABBITMQ__RECOGNITION_QUEUE={config.rabbitmq.recognition_queue}\n"
+        f"RABBITMQ__TASK_PUBLISH_QUEUE={config.rabbitmq.task_publish_queue}\n"
+        f"RABBITMQ__TASK_RESULT_QUEUE={config.rabbitmq.task_result_queue}\n"
         f"PARSER__BASE_URL={config.parser.base_url}\n"
         f"PARSER__TIMEOUT={config.parser.timeout}\n"
         f"PARSER__MAX_RETRIES={config.parser.max_retries}\n"
