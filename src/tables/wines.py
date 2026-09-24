@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 class Wine(Base):
     __tablename__ = "wines"
     
-    id: Mapped[int]
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     
     # Has to be slug id
     external_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
