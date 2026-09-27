@@ -1,8 +1,9 @@
 from pydantic import Field
-from pydantic_settings import BaseSettings
+
+from src.config import AppSettings
 
 
-class DatabaseConfig(BaseSettings):
+class DatabaseConfig(AppSettings):
     host: str = Field(default="localhost")
     port: int = Field(default=5432)
     user: str = Field(default="postgres")

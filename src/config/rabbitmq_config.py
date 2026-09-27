@@ -1,10 +1,10 @@
 from pydantic import Field
-from pydantic_settings import BaseSettings
 
+from src.config import AppSettings
 from src.config.workers_config import WorkersConfig
 
 
-class RabbitMQConfig(BaseSettings):
+class RabbitMQConfig(AppSettings):
     host: str = Field(default="localhost")
     port: int = Field(default=5672)
     user: str = Field(default="guest")

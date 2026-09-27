@@ -1,8 +1,9 @@
 from pydantic import Field
-from pydantic_settings import BaseSettings
+
+from src.config import AppSettings
 
 
-class MinioConfig(BaseSettings):
+class MinioConfig(AppSettings):
     host: str = Field(default="localhost")
     port: int = Field(default=9000)
     access_key: str = Field(default="minioadmin")

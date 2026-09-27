@@ -1,10 +1,11 @@
 from pathlib import Path
 
 from pydantic import Field
-from pydantic_settings import BaseSettings
+
+from src.config import AppSettings
 
 
-class LoggingConfig(BaseSettings):
+class LoggingConfig(AppSettings):
     level: str = Field(default="INFO")
     logs_directory: str = Field(default="./logs/")
     file: str | None = Field(default=None)

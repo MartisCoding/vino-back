@@ -1,8 +1,9 @@
 from pydantic import Field
-from pydantic_settings import BaseSettings
+
+from src.config import AppSettings
 
 
-class ParserConfig(BaseSettings):
+class ParserConfig(AppSettings):
     base_url: str = Field(default="https://vino-svoe.ru")
     timeout: int = Field(default=10)
     max_retries: int = Field(default=3)
