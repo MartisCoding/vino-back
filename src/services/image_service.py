@@ -6,7 +6,11 @@ from uuid import uuid4
 from loguru import logger
 from minio import Minio
 
-from src.repositories import UploadedImageRepository, WineImageRepository, WineRepository
+from src.repositories import (
+    UploadedImageRepository,
+    WineImageRepository,
+    WineRepository,
+)
 from src.tables import UploadedImage, WineImage
 
 
@@ -101,14 +105,14 @@ class ImageService:
             raise ValueError("Wine was not found by provided identifiers.")
 
         self._ensure_bucket()
-        object_key = f"reference/{wine.external_id}/{uuid4()}{self._file_extension(content_type)}"
+        object_key = f"reference/{wine.slug}/{uuid4()}{self._file_extension(content_type)}"
         sha256_hash = self._hash_bytes(image_bytes)
 
         self._put_object(object_key=object_key, image_bytes=image_bytes, content_type=content_type)
 
         wine_image = await self._wine_image_repository.create(
             wine_id=wine.id,
-            wine_external_id=wine.external_id,
+            wine_external_id=wine.slug,
             object_key=object_key,
             content_type=content_type,
             size=len(image_bytes),

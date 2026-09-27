@@ -1,13 +1,14 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+from loguru import logger
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from loguru import logger
 
 from src.config import DatabaseConfig
 
@@ -39,6 +40,14 @@ class ConnectionManager:
         logger.debug("Closing database engine")
         await self._engine.dispose()
         logger.info("Database engine closed")
+
+    async def test_connection(self) -> None:
+        logger.debug("Testing database connection")
+        async with self._engine.connect() as conn:
+            ping = await conn.execute(select(1))
+            if ping.scalar() != 1:
+                raise ConnectionError("Database connection test failed")
+        logger.info("Database connection test successful")
 
     @asynccontextmanager
     async def acquire(self) -> AsyncGenerator[AsyncSession, None]:

@@ -1,104 +1,251 @@
-import asyncio
+import argparse
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
-
 from src.config import Config
-from src.resources import ConnectionManager, create_minio_client, create_rabbitmq_client
-from src.routes import recognition_router
-from src.services import ServiceFactory
-from src.consumer.recognition_result_consumer import RecognitionResultConsumer
-config = Config()
+from src.resources import Resources, create_resources
+from src.resources.queue_listener_factory import (
+    CVInferenceQueueListener,
+    OCRInferenceQueueListener,
+    QueueListenerFactory,
+)
+from src.routes.recognition import RecognitionController
+from src.services.factories import ServiceFactory
 
-def init_logger():
-    logger.remove()
-    
-    if config.logging.log_path:
-        logger.add(
-            config.logging.log_path,
-            level=config.logging.level,
-            serialize=config.logging.serialize
+
+class Application:
+    def __init__(self, config: Config):
+        self.config = config
+
+        self.resources: Resources | None = None
+        self.service_factory: ServiceFactory | None = None
+        self.listener_factory: QueueListenerFactory | None = None  # type: ignore
+        self.app: FastAPI | None = None
+
+    def logger_setup(self) -> None:
+        logger.remove()
+
+        log_format = (
+            "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
+            "<level>{level: <8}</level> | "
+            "<cyan>{name}</cyan>:"
+            "<cyan>{function}</cyan>:"
+            "<cyan>{line}</cyan> | "
+            "<level>{message}</level>"
         )
-    else:
+
         logger.add(
-            sink=lambda msg: print(msg, end=""),
-            level=config.logging.level,
-            serialize=config.logging.serialize,
+            sys.stderr,
+            level=self.config.logging.level,
+            format=log_format,
+            serialize=self.config.logging.serialize,
+            backtrace=True,
+            diagnose=False,
         )
 
+        if self.config.logging.file:
+            log_path = Path(self.config.logging.logs_directory) / self.config.logging.file
+            log_path.parent.mkdir(parents=True, exist_ok=True)
 
-@asynccontextmanager
-async def startup_shutdown_indicate(app: FastAPI):
-    logger.info("Starting application")
+            logger.add(
+                log_path,
+                level=self.config.logging.level,
+                format=log_format,
+                serialize=self.config.logging.serialize,
+                backtrace=True,
+                diagnose=False,
+                encoding="utf-8",
+            )
+        logger.info("Logger setup complete with level: {}", self.config.logging.level)
 
-    connection_manager = ConnectionManager(config.database)
-    logger.debug("Conn_man initialized with config: {}", config.database)
-    minio_client = create_minio_client(config.minio)
-    logger.debug("MinIO client created with config: {}", config.minio)
-    rabbitmq_client = create_rabbitmq_client(config.rabbitmq)
-    logger.debug("RabbitMQ client created with config: {}", config.rabbitmq)
-    await rabbitmq_client.connect()
-    service_factory = ServiceFactory(
-        config=config,
-        minio_client=minio_client,
-        rabbitmq_client=rabbitmq_client,
+    async def prelude(self) -> None:
+        logger.info("Starting application prelude routine")
+
+        if self.resources is None:
+            raise RuntimeError("Resources are not initialized")
+
+        if self.service_factory is None:
+            raise RuntimeError("ServiceFactory is not initialized")
+
+        if self.listener_factory is None:
+            raise RuntimeError("ListenerFactory is not initialized")
+
+        logger.debug("Connecting to RabbitMQ")
+        try:
+            await self.resources.rabbitmq_client.connect()
+        except Exception:
+            logger.exception("Failed to connect to RabbitMQ")
+            raise
+
+        logger.info("Connected to RabbitMQ. Declaring queues...")
+        logger.debug("Declaring inference and OCR inference result queues")
+        await self.resources.rabbitmq_client.declare_queue(
+            queue_name=self.config.rabbitmq.inference_worker.consume_queue,
+        )
+        await self.resources.rabbitmq_client.declare_queue(
+            queue_name=self.config.rabbitmq.inference_ocr_worker.consume_queue,
+        )
+        logger.debug("Declaring inference and OCR inference publish queues")
+        await self.resources.rabbitmq_client.declare_queue(
+            queue_name=self.config.rabbitmq.inference_worker.publish_queue,
+        )
+        await self.resources.rabbitmq_client.declare_queue(
+            queue_name=self.config.rabbitmq.inference_ocr_worker.publish_queue,
+        )
+        logger.info("All queues declared successfully")
+
+        logger.debug("Checking PostgreSQL database connection")
+        await self.resources.connection_manager.test_connection()
+        logger.debug("PostgreSQL database connection successful")
+
+        logger.debug("Creating CV Inference Queue Listener")
+        cv_listener = CVInferenceQueueListener(
+            self.resources,
+            self.service_factory,
+        )
+
+        self.listener_factory.create_queue_listener(
+            listener_name=self.config.rabbitmq.inference_worker.worker_name,
+            queue_name=self.config.rabbitmq.inference_worker.consume_queue,
+            handler=cv_listener.handler,
+        )
+
+        logger.debug(
+            "CV Inference Queue Listener created and started",
+        )
+
+        logger.debug("Creating OCR Inference Queue Listener")
+        ocr_listener = OCRInferenceQueueListener(
+            self.resources,
+            self.service_factory,
+        )
+
+        self.listener_factory.create_queue_listener(
+            listener_name=self.config.rabbitmq.inference_ocr_worker.worker_name,
+            queue_name=self.config.rabbitmq.inference_ocr_worker.consume_queue,
+            handler=ocr_listener.handler,
+        )
+
+        logger.debug(
+            "OCR Inference Queue Listener created and started",
+        )
+
+        logger.info("Application prelude routine completed successfully")
+
+    def create_app(self):
+        if not self.resources or not self.service_factory:
+            raise RuntimeError("Resources and ServiceFactory must be initialized before creating FastAPI app")
+
+        if not self.listener_factory:
+            raise RuntimeError("ListenerFactory must be initialized before creating FastAPI app")
+
+        if self.app:
+            raise RuntimeError("FastAPI app has already been created")
+
+        logger.debug("Creating FastAPI application")
+        recognition_router = APIRouter(prefix="/recognition", tags=["Recognition"])
+        recognition_controller = RecognitionController(
+            router=recognition_router,
+            resources=self.resources,
+            service_factory=self.service_factory
+        )
+
+        logger.debug("Including recognition router in the FastAPI application")
+
+        self.app = FastAPI(
+            title=self.config.app_name, 
+            version=self.config.app_version,
+            lifespan=self.lifespan,
+            debug=self.config.fastapi.debug,
+            )
+        self.app.include_router(recognition_router)
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=self.config.fastapi.cors.allow_origins,
+            allow_credentials=self.config.fastapi.cors.allow_credentials,
+            allow_methods=self.config.fastapi.cors.allow_methods,
+            allow_headers=self.config.fastapi.cors.allow_headers,
+        )
+    
+    @asynccontextmanager
+    async def lifespan(self, app: FastAPI):
+        logger.info("Starting application lifespan context")
+        await self.prelude()
+
+        try:
+            yield
+        finally:
+            logger.info("Shutting down application lifespan context")
+            if self.listener_factory:
+                await self.listener_factory.stop_all_listeners()
+            if self.resources:
+                await self.resources.connection_manager.close()
+                await self.resources.rabbitmq_client.close()
+            logger.info("Application shutdown complete")
+
+    def run(self):
+        self.logger_setup()
+
+        self.resources = create_resources(self.config)
+        self.service_factory = ServiceFactory(
+            self.resources,
+            self.config,
+        )
+        self.listener_factory = QueueListenerFactory(
+            self.resources,
+        )
+
+        self.create_app()
+
+        if not self.app:
+            raise RuntimeError("Error creating FastAPI app")
+
+        logger.info("Starting FastAPI application with Uvicorn")
+        uvicorn.run(
+            self.app,
+            host=self.config.fastapi.host,
+            port=self.config.fastapi.port,
+            log_level=self.config.logging.level.lower(),
+        )
+
+def main():
+    parser = argparse.ArgumentParser(description="Run the Svoe Vino Recognition backend service.")
+    parser.add_argument(
+        "--generate-config-json-string",
+        action="store_true",
+        help="Generate a configuration string and exit.",
     )
-    logger.debug("ServiceFactory created with config: {}", config)
-    
-    consumer = RecognitionResultConsumer(
-        connection_manager=connection_manager,
-        service_factory=service_factory,
-    )
-    
-    consumer_task = asyncio.create_task(
-        rabbitmq_client.consume_result(consumer.handle)
+
+    parser.add_argument(
+        "--validate-config",
+        action="store_true",
+        help="Validate the configuration and exit.",
     )
 
-    app.state.config = config
-    app.state.connection_manager = connection_manager
-    app.state.minio_client = minio_client
-    app.state.rabbitmq_client = rabbitmq_client
-    app.state.service_factory = service_factory
 
-    logger.info("Application resources initialized")
-    
-    yield
-    logger.info("Stopping application")
-    
-    consumer_task.cancel()
+    args = parser.parse_args()
+    if args.generate_config_json_string:
+        config = Config.defaults()
+        print(config.model_dump_json(), flush=True)
+        return
 
-    try:
-        await consumer_task
-    except asyncio.CancelledError:
-        pass
+    if args.validate_config:
+        try:
+            config = Config()
+            print("Configuration is valid.")
+        except Exception as e:
+            print(f"Configuration validation failed: {e}")
+            sys.exit(1)
+        return
 
-    await rabbitmq_client.close()
-    await connection_manager.close()
-    
-
-def create_app() -> FastAPI:
-    app = FastAPI(
-        title=config.fastapi.title,
-        debug=config.fastapi.debug,
-        lifespan=startup_shutdown_indicate
-    )
-    app.include_router(recognition_router)
-    return app
-
-def main() -> None:
-    init_logger()
-    
-    app = create_app()
-    
-    logger.debug("Launching app with configuration: {}", config)
-    
-    uvicorn.run(
-        app,
-        host=config.fastapi.host,
-        port=config.fastapi.port
-    )
+    config = Config()
+    app = Application(config)
+    app.run()
     
 if __name__ == "__main__":
     main()

@@ -1,50 +1,39 @@
-from minio import Minio
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.repositories.recognition_result import RecognitionResultRepository
+from src.services.recognition_service import RecognitionService
 from src.config import Config
-from src.repositories import RecognitionTaskRepository, UploadedImageRepository, WineImageRepository, WineRepository
-from src.resources import RabbitMQClient
+from src.repositories import (
+    RecognitionTaskRepository,
+    UploadedImageRepository,
+    WineImageRepository,
+    WineRepository,
+)
+from src.resources import Resources
 from src.services.image_service import ImageService
-from src.services.recognition_task_service import RecognitionTaskService
-from src.services.wine_parser_service import WineParserService
 
 
 class ServiceFactory:
-    def __init__(self, config: Config, minio_client: Minio, rabbitmq_client: RabbitMQClient):
-        self._config = config
-        self._minio_client = minio_client
-        self._rabbitmq_client = rabbitmq_client
+    def __init__(self, resources: Resources, config: Config):
+        self.resources = resources
+        self.config = config
 
-    def create_image_service(self, session: AsyncSession) -> ImageService:
-        wine_repository = WineRepository(session)
-        uploaded_image_repository = UploadedImageRepository(session)
-        wine_image_repository = WineImageRepository(session)
+    def image_service(self, session: AsyncSession) -> ImageService:
         return ImageService(
-            minio_client=self._minio_client,
-            image_bucket=self._config.minio.image_bucket,
-            uploaded_image_repository=uploaded_image_repository,
-            wine_image_repository=wine_image_repository,
-            wine_repository=wine_repository,
+            minio_client=self.resources.minio_client,
+            image_bucket=self.config.minio.image_bucket,
+            uploaded_image_repository=UploadedImageRepository(session),
+            wine_image_repository=WineImageRepository(session),
+            wine_repository=WineRepository(session),
         )
 
-    def create_recognition_task_service(self, session: AsyncSession) -> RecognitionTaskService:
-        wine_repository = WineRepository(session)
-        task_repository = RecognitionTaskRepository(session)
-        return RecognitionTaskService(
-            task_repository=task_repository,
-            wine_repository=wine_repository,
-            rabbitmq_client=self._rabbitmq_client,
-            queue_name=self._config.rabbitmq.recognition_queue,
-        )
-
-    def create_wine_repository(self, session: AsyncSession) -> WineRepository:
-        return WineRepository(session)
-
-    def create_recognition_task_repository(self, session: AsyncSession) -> RecognitionTaskRepository:
-        return RecognitionTaskRepository(session)
-
-    def create_wine_parser_service(self, session: AsyncSession) -> WineParserService:
-        return WineParserService(
-            wine_repository=self.create_wine_repository(session),
-            config=self._config.parser,
+    def recognition_service(self, session: AsyncSession) -> RecognitionService:
+        return RecognitionService(
+            task_repository=RecognitionTaskRepository(session),
+            result_repository=RecognitionResultRepository(session),
+            wine_parser=self.resources.parser,
+            wine_repository=WineRepository(session),
+            rabbitmq_client=self.resources.rabbitmq_client,
+            workers_configs={"inference": self.config.rabbitmq.inference_worker, "ocr_inference": self.config.rabbitmq.inference_ocr_worker},
+            resolver=self.resources.resolver,
         )

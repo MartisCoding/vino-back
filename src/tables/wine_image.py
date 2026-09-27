@@ -1,7 +1,10 @@
 from datetime import datetime
-from src.tables import Base
-from sqlalchemy import DateTime, String, Integer, ForeignKey
+
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
+
+from src.tables import Base
+
 
 class WineImage(Base):
     __tablename__ = "wine_images"

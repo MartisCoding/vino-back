@@ -1,7 +1,6 @@
 import json
-from typing import Any
-
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 import aio_pika
 from aio_pika.abc import AbstractChannel, AbstractConnection, AbstractIncomingMessage
@@ -29,10 +28,15 @@ class RabbitMQClient:
         )
         self._connection = await aio_pika.connect_robust(self._config.url)
         self._channel = await self._connection.channel()
-        await self._channel.declare_queue(self._config.task_publish_queue, durable=True)
-        logger.info("RabbitMQ connected and queue declared: {}", self._config.task_publish_queue)
-        await self._channel.declare_queue(self._config.task_result_queue, durable=True)
-        logger.info("RabbitMQ connected and queue declared: {}", self._config.task_result_queue)
+
+    async def declare_queue(self, queue_name: str) -> None:
+        if self._channel is None or self._channel.is_closed:
+            logger.error("RabbitMQ declare queue failed: channel is not initialized")
+            raise RuntimeError("RabbitMQ channel is not initialized. Call connect() first.")
+
+        logger.debug("Declaring queue={}", queue_name)
+        await self._channel.declare_queue(queue_name, durable=True)
+        logger.info("Queue declared queue={}", queue_name)
 
     async def close(self) -> None:
         logger.debug("Closing RabbitMQ client")
@@ -42,14 +46,18 @@ class RabbitMQClient:
             await self._connection.close()
         logger.info("RabbitMQ client closed")
 
-    async def publish_task(self, payload: dict[str, Any]) -> None:
+    async def publish_task(
+            self, 
+            queue_name: str,
+            payload: dict[str, Any]
+    ) -> None:
         if self._channel is None or self._channel.is_closed:
             logger.error("RabbitMQ publish failed: channel is not initialized")
             raise RuntimeError("RabbitMQ channel is not initialized. Call connect() first.")
 
         logger.debug(
             "Publishing message to queue={} task_id={}",
-            self._config.task_publish_queue,
+            queue_name,
             payload.get("task_id"),
         )
         message = aio_pika.Message(
@@ -58,11 +66,12 @@ class RabbitMQClient:
             delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
         )
 
-        await self._channel.default_exchange.publish(message, routing_key=self._config.task_publish_queue)
-        logger.info("Message published to queue={} task_id={}", self._config.task_publish_queue, payload.get("task_id"))
+        await self._channel.default_exchange.publish(message, routing_key=queue_name)
+        logger.info("Message published to queue={} task_id={}", queue_name, payload.get("task_id"))
         
     async def consume_result(
         self,
+        queue_name: str,
         callback: Callable[[dict[str, Any]], Awaitable[None]],
     ) -> None:
         if self._channel is None or self._channel.is_closed:
@@ -71,11 +80,11 @@ class RabbitMQClient:
                 "RabbitMQ channel is not initialized. Call connect() first."
             )
 
-        queue = await self._channel.get_queue(self._config.task_result_queue)
+        queue = await self._channel.get_queue(queue_name, ensure=True)
 
         logger.info(
             "Started consuming queue={}",
-            self._config.task_result_queue,
+            queue_name,
         )
 
         async def on_message(
@@ -89,7 +98,7 @@ class RabbitMQClient:
 
                     logger.debug(
                         "Received message queue={} payload={}",
-                        self._config.task_result_queue,
+                        queue_name,
                         payload,
                     )
 
@@ -98,11 +107,12 @@ class RabbitMQClient:
                 except Exception:
                     logger.exception(
                         "Failed to process message queue={}",
-                        self._config.task_result_queue,
+                        queue_name,
                     )
                     raise
 
-        await queue.consume(on_message)
+        consumer_tag = await queue.consume(on_message)
+        logger.info("Registered a consumer with tag consumer_tag={}", consumer_tag)
 
 def create_rabbitmq_client(config: RabbitMQConfig) -> RabbitMQClient:
     logger.debug("Creating RabbitMQ client for host={} port={}", config.host, config.port)

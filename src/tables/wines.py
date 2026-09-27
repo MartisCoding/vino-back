@@ -1,15 +1,17 @@
 from datetime import datetime
-from src.tables import Base
-from sqlalchemy import String, Float, func
+
+from sqlalchemy import Float, String, func
 from sqlalchemy.orm import Mapped, mapped_column
+
+from src.tables import Base
+
 
 class Wine(Base):
     __tablename__ = "wines"
     
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     
-    # Has to be slug id
-    external_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     
