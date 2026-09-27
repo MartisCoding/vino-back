@@ -1,8 +1,8 @@
-from typing import Sequence
+from collections.abc import Sequence
 
+from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from loguru import logger
 
 from src.tables import UploadedImage
 

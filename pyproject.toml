@@ -44,3 +44,12 @@ dependencies = [
     "uvicorn==0.52.4",
     "yarl==1.25.1",
 ]
+
+[dependency-groups]
+dev = [
+    "faker>=40.39.0",
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+]
