@@ -1,8 +1,9 @@
 from pydantic import Field
-from pydantic_settings import BaseSettings
+
+from src.config import AppSettings
 
 
-class WorkersConfig(BaseSettings):
+class WorkersConfig(AppSettings):
     worker_name: str = Field(default="worker")
     publish_queue: str = Field(default="publish_queue")
     consume_queue: str = Field(default="consume_queue")

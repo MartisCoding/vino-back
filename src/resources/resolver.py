@@ -10,8 +10,6 @@ from src.tables import Wine
 
 
 class RecognitionResolver:
-    def __init__(self):
-        pass
 
     def resolve(
         self,
@@ -24,42 +22,16 @@ class RecognitionResolver:
         cv_slug = self.get_cv_slug(cv_response)
         ocr_slug = self.get_ocr_slug(ocr_response)
 
-        if cv_wine is None and ocr_wine is None:
-            return RecognitionResolution(
-                resolved=False,
-                error="no_recognition_result",
-            )
+        # OCR has priority whenever it produced a usable result.
+        if ocr_wine is not None:
+            source = "ocr"
 
-        if cv_wine is None:
-            return self._resolve_ocr_only(
-                ocr_response=ocr_response,
-                ocr_wine=ocr_wine,
-                ocr_slug=ocr_slug,
-            )
+            if cv_wine is not None and cv_wine.id == ocr_wine.id:
+                source = "both"
+                reason = "both_agree"
+            else:
+                reason = "ocr_priority"
 
-        if ocr_wine is None:
-            return self._resolve_cv_only(
-                cv_wine=cv_wine,
-                cv_slug=cv_slug,
-                cv_response=cv_response,
-            )
-
-        if cv_wine.id == ocr_wine.id:
-            return RecognitionResolution(
-                resolved=True,
-                detected_slug=cv_wine.slug,
-                alternatives=self._collect_alternatives(
-                    selected_slug=cv_wine.slug,
-                    cv_response=cv_response,
-                    ocr_response=ocr_response,
-                ),
-                source=ResolutionSource(
-                    source="both",
-                    reason="both_agree",
-                ),
-            )
-
-        if self._same_family(cv_wine, ocr_wine):
             return RecognitionResolution(
                 resolved=True,
                 detected_slug=ocr_wine.slug,
@@ -69,79 +41,30 @@ class RecognitionResolver:
                     ocr_response=ocr_response,
                 ),
                 source=ResolutionSource(
-                    source="ocr",
-                    reason="ocr_variant_override",
+                    source=source,
+                    reason=reason, #type: ignore
                 ),
             )
 
-        return RecognitionResolution(
-            resolved=True,
-            detected_slug=cv_wine.slug,
-            alternatives=self._collect_alternatives(
-                selected_slug=cv_wine.slug,
-                cv_response=cv_response,
-                ocr_response=ocr_response,
-            ),
-            source=ResolutionSource(
-                source="cv",
-                reason="cv_conflict",
-            ),
-        )
-
-    def _resolve_cv_only(
-        self,
-        cv_wine: Wine,
-        cv_slug: str | None,
-        cv_response: CVInferenceResponse,
-    ) -> RecognitionResolution:
-        return RecognitionResolution(
-            resolved=True,
-            detected_slug=(
-                cv_wine.slug
-                if cv_wine is not None
-                else cv_slug
-            ),
-            alternatives=self._collect_cv_alternatives(
-                selected_slug=(
-                    cv_wine.slug
-                    if cv_wine is not None
-                    else cv_slug
-                ),
-                response=cv_response,
-            ),
-            source=ResolutionSource(
-                source="cv",
-                reason="cv_only",
-            ),
-        )
-
-    def _resolve_ocr_only(
-        self,
-        ocr_response: OCRInferenceResponse,
-        ocr_wine: Wine | None,
-        ocr_slug: str | None,
-    ) -> RecognitionResolution:
-
-        if (
-            ocr_response.result.status != "matched"
-            or ocr_wine is None
-        ):
+        # OCR did not produce a usable wine, fallback to CV.
+        if cv_wine is not None:
             return RecognitionResolution(
-                resolved=False,
-                error="ocr_result_ambiguous",
+                resolved=True,
+                detected_slug=cv_wine.slug,
+                alternatives=self._collect_alternatives(
+                    selected_slug=cv_wine.slug,
+                    cv_response=cv_response,
+                    ocr_response=ocr_response,
+                ),
+                source=ResolutionSource(
+                    source="cv",
+                    reason="cv_only",
+                ),
             )
 
         return RecognitionResolution(
-            resolved=True,
-            detected_slug=ocr_wine.slug,
-            alternatives=self._collect_ocr_alternatives(
-                selected_slug=ocr_wine.slug,
-                response=ocr_response,
-            ),
-            source=ResolutionSource(
-                source="ocr",
-                reason="ocr_only",
-            ),
+            resolved=False,
+            error="no_recognition_result",
         )
 
     @staticmethod
@@ -170,64 +93,13 @@ class RecognitionResolver:
         if result.error:
             return None
 
-        if result.status not in {"matched", "ambiguous"}:
+        if result.status != "matched": # CV now functions as a fallback for OCR, so we only consider "matched" results as valid.
             return None
 
         if result.best_match is None:
             return None
 
         return result.best_match.wine_id
-
-    @staticmethod
-    def _same_family(
-        left: Wine,
-        right: Wine,
-    ) -> bool:
-        left_name = RecognitionResolver._normalize_name(left.name)
-        right_name = RecognitionResolver._normalize_name(right.name)
-
-        left_winery = RecognitionResolver._normalize_name(left.winery)
-        right_winery = RecognitionResolver._normalize_name(right.winery)
-
-        if (
-            left_winery
-            and right_winery
-            and left_winery != right_winery
-        ):
-            return False
-
-        if left_name == right_name:
-            return True
-
-        left_tokens = set(left_name.split())
-        right_tokens = set(right_name.split())
-
-        if not left_tokens or not right_tokens:
-            return False
-
-        common = left_tokens & right_tokens
-
-        smaller_size = min(
-            len(left_tokens),
-            len(right_tokens),
-        )
-
-        return (
-            len(common) / smaller_size >= 0.8
-        )
-
-    @staticmethod
-    def _normalize_name(
-        value: str | None,
-    ) -> str:
-        if not value:
-            return ""
-
-        return " ".join(
-            value.casefold()
-            .replace("ё", "е")
-            .split()
-        )
 
     def _collect_alternatives(
         self,
@@ -275,13 +147,11 @@ class RecognitionResolver:
         if selected_slug is None:
             return []
 
-        slugs: list[str] = []
-
-        for candidate in response.result.candidates:
-            if candidate.wine_id != selected_slug:
-                slugs.append(candidate.wine_id)
-
-        return RecognitionResolver._unique(slugs)
+        return RecognitionResolver._unique(
+            candidate.wine_id
+            for candidate in response.result.candidates
+            if candidate.wine_id != selected_slug
+        )
 
     @staticmethod
     def _unique(

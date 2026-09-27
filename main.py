@@ -1,9 +1,11 @@
+import argparse
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
 from fastapi import APIRouter, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from src.config import Config
@@ -64,14 +66,21 @@ class Application:
 
     async def prelude(self) -> None:
         logger.info("Starting application prelude routine")
-        logger.debug("Creating resources")
-        self.resources = create_resources(self.config)
+
+        if self.resources is None:
+            raise RuntimeError("Resources are not initialized")
+
+        if self.service_factory is None:
+            raise RuntimeError("ServiceFactory is not initialized")
+
+        if self.listener_factory is None:
+            raise RuntimeError("ListenerFactory is not initialized")
 
         logger.debug("Connecting to RabbitMQ")
         try:
             await self.resources.rabbitmq_client.connect()
-        except Exception as e:
-            logger.error("Failed to connect to RabbitMQ: {}", e, exc_info=True)
+        except Exception:
+            logger.exception("Failed to connect to RabbitMQ")
             raise
 
         logger.debug("RabbitMQ connection established")
@@ -80,31 +89,37 @@ class Application:
         await self.resources.connection_manager.test_connection()
         logger.debug("PostgreSQL database connection successful")
 
-        logger.debug("Creating service factory")
-        self.service_factory = ServiceFactory(self.resources, self.config)
-        logger.debug("Service factory created")
-
-        logger.debug("Creating Listener factory")
-        self.listener_factory = QueueListenerFactory(self.resources)
-        logger.debug("Listener factory created")
-
         logger.debug("Creating CV Inference Queue Listener")
-        cv_listener = CVInferenceQueueListener(self.resources, self.service_factory)
+        cv_listener = CVInferenceQueueListener(
+            self.resources,
+            self.service_factory,
+        )
+
         self.listener_factory.create_queue_listener(
             listener_name=self.config.rabbitmq.inference_worker.worker_name,
             queue_name=self.config.rabbitmq.inference_worker.consume_queue,
             handler=cv_listener.handler,
         )
-        logger.debug("CV Inference Queue Listener created and started")
+
+        logger.debug(
+            "CV Inference Queue Listener created and started",
+        )
 
         logger.debug("Creating OCR Inference Queue Listener")
-        ocr_listener = OCRInferenceQueueListener(self.resources, self.service_factory)
+        ocr_listener = OCRInferenceQueueListener(
+            self.resources,
+            self.service_factory,
+        )
+
         self.listener_factory.create_queue_listener(
             listener_name=self.config.rabbitmq.inference_ocr_worker.worker_name,
             queue_name=self.config.rabbitmq.inference_ocr_worker.consume_queue,
             handler=ocr_listener.handler,
         )
-        logger.debug("OCR Inference Queue Listener created and started")
+
+        logger.debug(
+            "OCR Inference Queue Listener created and started",
+        )
 
         logger.info("Application prelude routine completed successfully")
 
@@ -135,7 +150,14 @@ class Application:
             debug=self.config.fastapi.debug,
             )
         self.app.include_router(recognition_router)
-
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=self.config.fastapi.cors.allow_origins,
+            allow_credentials=self.config.fastapi.cors.allow_credentials,
+            allow_methods=self.config.fastapi.cors.allow_methods,
+            allow_headers=self.config.fastapi.cors.allow_headers,
+        )
+    
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):
         logger.info("Starting application lifespan context")
@@ -154,6 +176,16 @@ class Application:
 
     def run(self):
         self.logger_setup()
+
+        self.resources = create_resources(self.config)
+        self.service_factory = ServiceFactory(
+            self.resources,
+            self.config,
+        )
+        self.listener_factory = QueueListenerFactory(
+            self.resources,
+        )
+
         self.create_app()
 
         if not self.app:
@@ -167,7 +199,47 @@ class Application:
             log_level=self.config.logging.level.lower(),
         )
 
-if __name__ == "__main__":
+def main():
+    parser = argparse.ArgumentParser(description="Run the Svoe Vino Recognition backend service.")
+    parser.add_argument(
+        "--generate-config-json-string",
+        action="store_true",
+        help="Generate a configuration string and exit.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version="Display the version of the application and exit.",
+    )
+
+    parser.add_argument(
+        "--validate-config",
+        action="store_true",
+        help="Validate the configuration and exit.",
+    )
+
+
+    args = parser.parse_args()
+    if args.generate_config_json_string:
+        config = Config.defaults()
+        print(config.model_dump_json())
+        return
+
+    if args.validate_config:
+        try:
+            config = Config()
+            print("Configuration is valid.")
+        except Exception as e:
+            print(f"Configuration validation failed: {e}")
+            sys.exit(1)
+        return
+
+    if args.version:
+        config = Config()
+        print(f"Svoe Vino Recognition Service Version: {config.app_version}")
+        return
+
     config = Config()
     app = Application(config)
     app.run()
+    

@@ -82,12 +82,11 @@ class OCRInferenceResponse(BaseModel):
 
 class ResolutionSource(BaseModel):
     source: Literal["cv", "ocr", "both"]
+
     reason: Literal[
         "both_agree",
-        "ocr_variant_override",
-        "cv_conflict",
+        "ocr_priority",
         "cv_only",
-        "ocr_only",
     ]
 
 
