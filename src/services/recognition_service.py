@@ -3,7 +3,7 @@ from typing import Any, Dict, Literal
 
 from loguru import logger
 
-from models.inference import CVInferenceResponse, OCRInferenceResponse
+from src.models.inference import CVInferenceResponse, OCRInferenceResponse
 from src.config.workers_config import WorkersConfig
 from src.models.recognition import RecognitionResponse
 from src.models.wine import WineDTO
@@ -13,7 +13,7 @@ from src.resources import RabbitMQClient
 from src.resources.parser import WineParser
 from src.resources.resolver import RecognitionResolver
 from src.tables import RecognitionTask, Wine
-from tables.recognition_result import RecognitionResult
+from src.tables.recognition_result import RecognitionResult
 
 TaskStatus = Literal["pending", "processing", "completed", "failed"]
 

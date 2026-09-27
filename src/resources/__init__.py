@@ -1,12 +1,11 @@
 from minio import Minio
-from pydantic.dataclasses import dataclass
+from dataclasses import dataclass
 
 from src.resources.database import ConnectionManager
 from src.resources.minio import create_minio_client
 from src.resources.parser import WineParser
 from src.resources.rabbitmq import RabbitMQClient, create_rabbitmq_client
 from src.resources.resolver import RecognitionResolver
-from src.resources.queue_listener_factory import QueueListenerFactory, CVInferenceQueueListener, OCRInferenceQueueListener
 
 __all__ = [
     "ConnectionManager",
@@ -36,3 +35,5 @@ def create_resources(config) -> Resources:
         parser=parser,
         resolver=resolver
     )
+
+from src.resources.queue_listener_factory import QueueListenerFactory, CVInferenceQueueListener, OCRInferenceQueueListener

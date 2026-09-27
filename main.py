@@ -222,7 +222,7 @@ def main():
     args = parser.parse_args()
     if args.generate_config_json_string:
         config = Config.defaults()
-        print(config.model_dump_json())
+        print(config.model_dump_json(), flush=True)
         return
 
     if args.validate_config:
@@ -243,3 +243,5 @@ def main():
     app = Application(config)
     app.run()
     
+if __name__ == "__main__":
+    main()

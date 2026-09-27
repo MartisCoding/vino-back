@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from repositories.recognition_result import RecognitionResultRepository
-from services.recognition_service import RecognitionService
+from src.repositories.recognition_result import RecognitionResultRepository
+from src.services.recognition_service import RecognitionService
 from src.config import Config
 from src.repositories import (
     RecognitionTaskRepository,

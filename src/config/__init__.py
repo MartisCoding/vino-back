@@ -9,21 +9,6 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
-from src.config.cors import FastAPICORSConfig
-from src.config.database_config import DatabaseConfig
-from src.config.fastapi_config import FastAPIConfig
-from src.config.logging_config import LoggingConfig
-from src.config.minio_config import MinioConfig
-from src.config.parser_config import ParserConfig
-from src.config.rabbitmq_config import RabbitMQConfig
-from src.config.workers_config import WorkersConfig
-
-_settings_sources_enabled = ContextVar(
-    "settings_sources_enabled",
-    default=True,
-)
-
-
 class AppSettings(BaseSettings):
 
     @classmethod
@@ -53,6 +38,23 @@ class AppSettings(BaseSettings):
             return cls()
         finally:
             _settings_sources_enabled.reset(token)
+
+
+from src.config.cors import FastAPICORSConfig
+from src.config.database_config import DatabaseConfig
+from src.config.fastapi_config import FastAPIConfig
+from src.config.logging_config import LoggingConfig
+from src.config.minio_config import MinioConfig
+from src.config.parser_config import ParserConfig
+from src.config.rabbitmq_config import RabbitMQConfig
+from src.config.workers_config import WorkersConfig
+
+_settings_sources_enabled = ContextVar(
+    "settings_sources_enabled",
+    default=True,
+)
+
+
 
 
 class Config(AppSettings):
