@@ -14,15 +14,30 @@ class QueueListenerFactory:
 
         self.tasks: dict[str, asyncio.Task[None]] = {}
 
-    def create_queue_listener(self, listener_name: str, queue_name: str, handler: Callable[[dict[str, Any]], Awaitable[None]]) -> None:
+    def create_queue_listener(
+        self,
+        listener_name: str,
+        queue_name: str,
+        handler: Callable[[dict[str, Any]], Awaitable[None]],
+    ) -> None:
         async def listener():
-            logger.info("Starting queue listener for queue: {}", queue_name)
-            while True:
-                try:
-                    await self._resources.rabbitmq_client.consume_result(queue_name, handler)
-                    logger.debug("Processed message from queue: {}", queue_name)
-                except Exception as e:
-                    logger.error("Error occurred while consuming message from queue={}, error={}", queue_name, e, exc_info=True)
+            logger.info(
+                "Starting queue listener for queue: {}",
+                queue_name,
+            )
+
+            try:
+                await self._resources.rabbitmq_client.consume_result(
+                    queue_name,
+                    handler,
+                )
+
+                await asyncio.Future()
+            except Exception:
+                logger.exception(
+                    "Error occurred while consuming queue={}",
+                    queue_name,
+                )
 
         task = asyncio.create_task(listener())
         self.tasks[listener_name] = task

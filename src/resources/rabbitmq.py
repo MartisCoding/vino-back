@@ -111,7 +111,8 @@ class RabbitMQClient:
                     )
                     raise
 
-        await queue.consume(on_message)
+        consumer_tag = await queue.consume(on_message)
+        logger.info("Registered a consumer with tag consumer_tag={}", consumer_tag)
 
 def create_rabbitmq_client(config: RabbitMQConfig) -> RabbitMQClient:
     logger.debug("Creating RabbitMQ client for host={} port={}", config.host, config.port)

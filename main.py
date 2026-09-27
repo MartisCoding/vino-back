@@ -7,7 +7,6 @@ import uvicorn
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
-
 from src.config import Config
 from src.resources import Resources, create_resources
 from src.resources.queue_listener_factory import (
@@ -83,7 +82,22 @@ class Application:
             logger.exception("Failed to connect to RabbitMQ")
             raise
 
-        logger.debug("RabbitMQ connection established")
+        logger.info("Connected to RabbitMQ. Declaring queues...")
+        logger.debug("Declaring inference and OCR inference result queues")
+        await self.resources.rabbitmq_client.declare_queue(
+            queue_name=self.config.rabbitmq.inference_worker.consume_queue,
+        )
+        await self.resources.rabbitmq_client.declare_queue(
+            queue_name=self.config.rabbitmq.inference_ocr_worker.consume_queue,
+        )
+        logger.debug("Declaring inference and OCR inference publish queues")
+        await self.resources.rabbitmq_client.declare_queue(
+            queue_name=self.config.rabbitmq.inference_worker.publish_queue,
+        )
+        await self.resources.rabbitmq_client.declare_queue(
+            queue_name=self.config.rabbitmq.inference_ocr_worker.publish_queue,
+        )
+        logger.info("All queues declared successfully")
 
         logger.debug("Checking PostgreSQL database connection")
         await self.resources.connection_manager.test_connection()
@@ -206,11 +220,6 @@ def main():
         action="store_true",
         help="Generate a configuration string and exit.",
     )
-    parser.add_argument(
-        "--version",
-        action="version",
-        version="Display the version of the application and exit.",
-    )
 
     parser.add_argument(
         "--validate-config",
@@ -232,11 +241,6 @@ def main():
         except Exception as e:
             print(f"Configuration validation failed: {e}")
             sys.exit(1)
-        return
-
-    if args.version:
-        config = Config()
-        print(f"Svoe Vino Recognition Service Version: {config.app_version}")
         return
 
     config = Config()

@@ -16,7 +16,7 @@ class CVRecognitionResult(BaseModel):
 
 
 class CVInferenceResponse(BaseModel):
-    request_id: str
+    task_id: str
     results: list[CVRecognitionResult]
     expected_score: float | None = None
     error: str | None = None
@@ -76,7 +76,7 @@ class OCRResult(BaseModel):
 
 
 class OCRInferenceResponse(BaseModel):
-    request_id: str
+    task_id: str
     result: OCRResult
 
 
