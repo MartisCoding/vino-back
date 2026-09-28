@@ -18,7 +18,7 @@ class RecognitionResolver:
         ocr_weight: float = 1.0,
         cv_weight: float = 0.4,
         rrf_k: int = 10,
-        cv_min_score: float = 0.0,
+        cv_min_score: float = 0.65,
     ) -> None:
         self._top_k = top_k
         self._ocr_weight = ocr_weight
@@ -76,12 +76,14 @@ class RecognitionResolver:
     # Primary slug extraction
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def get_cv_slug(response: CVInferenceResponse) -> str | None:
+    def get_cv_slug(self, response: CVInferenceResponse) -> str | None:
         if response.error or not response.results:
             return None
 
         best = max(response.results, key=lambda r: r.score)
+        if best.score < self._cv_min_score:
+            return None
+
         return best.payload.slug
 
     @staticmethod
