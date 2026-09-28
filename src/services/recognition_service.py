@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Literal
 
 from loguru import logger
@@ -52,6 +53,47 @@ class RecognitionService:
                 "OCR inference workers configuration is required."
             )
 
+    async def copy_catalog_to_database(self, path_to_catalog: Path) -> None:
+        logger.info(
+            "Copying wine catalog from path={} to database",
+            path_to_catalog,
+        )
+        if not path_to_catalog.exists() and not path_to_catalog.is_file():
+            raise FileNotFoundError(
+                f"Catalog file not found at {path_to_catalog}"
+            )
+
+        with open(path_to_catalog, "r", encoding="utf-8") as file:
+
+            if path_to_catalog.suffix != ".jsonl":
+                raise ValueError(
+                    f"Unsupported catalog file format: {path_to_catalog.suffix}. Only .jsonl is supported."
+                )
+
+            records = []
+            
+            import json
+            for k, line in enumerate(file.readlines(), start=1):
+                try:
+                    catalog_data = json.loads(line)
+                    logger.debug(
+                        "Parsed JSON line {}/{} in catalog file",
+                        k,
+                        len(file.readlines()),
+                        catalog_data,
+                    )
+                    records.append(catalog_data)
+                except json.JSONDecodeError as e:
+                    logger.error(
+                        "Failed to parse JSON line {} in catalog file: {}",
+                        k,
+                        e,
+                    )
+                    continue
+
+        await self._wine_repository.inflate(records)
+                
+    
     async def create_and_send_task(self, uploaded_image_id: int, object_key: str) -> RecognitionTask:
         logger.debug("Creating and sending recognition task for uploaded_image_id={}", uploaded_image_id)
         task = await self._task_repository.create(uploaded_image_id=uploaded_image_id)

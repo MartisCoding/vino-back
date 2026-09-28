@@ -105,14 +105,17 @@ class Application:
         logger.debug("PostgreSQL database connection successful")
 
         logger.info("Creating database tables if they do not exist")
-
         async with self.resources.connection_manager.acquire() as session:  # noqa: SIM117
             async with session.bind.begin() as conn:
                 # For debugging i drop all tables and recreate them. In production, you should use migrations instead.
                 await conn.run_sync(Base.metadata.drop_all) #type: ignore
                 await conn.run_sync(Base.metadata.create_all) #type: ignore
-
         logger.info("Database tables created successfully")
+
+        logger.info("Inflating database with catalog data from {}", self.config.path_to_catalog)
+        async with self.resources.connection_manager.acquire() as session:  # noqa: SIM117
+            await self.service_factory.recognition_service(session).copy_catalog_to_database(Path(self.config.path_to_catalog))
+        logger.info("Inflated database with catalog data successfully")
 
         logger.debug("Creating CV Inference Queue Listener")
         cv_listener = CVInferenceQueueListener(
@@ -166,6 +169,8 @@ class Application:
             service_factory=self.service_factory
         )
 
+        eval_router = APIRouter(prefix="/v1/eval", tags=["Evaluation"])
+        eval_router.post("/predict")(recognition_controller.eval_predict)
         logger.debug("Including recognition router in the FastAPI application")
 
         self.app = FastAPI(
@@ -175,6 +180,7 @@ class Application:
             debug=self.config.fastapi.debug,
             )
         self.app.include_router(recognition_router)
+        self.app.include_router(eval_router)
         self.app.add_middleware(
             CORSMiddleware,
             allow_origins=self.config.fastapi.cors.allow_origins,

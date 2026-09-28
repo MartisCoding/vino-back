@@ -69,6 +69,8 @@ class Config(AppSettings):
     app_name: str = Field(default="test")
     app_version: str = Field(default="0.0.1")
     
+
+    path_to_catalog: str = Field(default="./catalog.jsonl")
     
     fastapi: FastAPIConfig = Field(default_factory=FastAPIConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)

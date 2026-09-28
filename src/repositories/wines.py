@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from difflib import SequenceMatcher
+from typing import Any
 
 from loguru import logger
 from sqlalchemy import select
@@ -12,28 +13,83 @@ class WineRepository:
     def __init__(self, session: AsyncSession):
         self._session = session
 
+    async def inflate(self, catalog: list[dict[str, Any]]):
+        """Inflate the database with a list of wines"""
+        import json
+        records = [
+            (
+                wine["slug"],
+                wine["wine_id"],
+                wine["name"],
+                wine["producer"],
+                wine["region"],
+                wine["style"],
+                wine["color"],
+                wine["grapes"],
+                wine.get("year"),
+                wine.get("alcohol_percent"),
+                wine.get("image_url"),
+                json.dumps(wine.get("aliases", [])),
+                wine["search_text"],
+            )
+            for wine in catalog
+        ]
+
+        connection = await self._session.connection()
+        raw_conn = await connection.get_raw_connection()
+        driver_connection = raw_conn.driver_connection
+        await driver_connection.copy_records_to_table(
+            "wines",
+            records=records,
+            columns=[
+                "slug",
+                "wine_id",
+                "name",
+                "producer",
+                "region",
+                "style",
+                "color",
+                "grapes",
+                "year",
+                "alcohol_percent",
+                "image_url",
+                "aliases",
+                "search_text",
+            ],
+        )
+
     async def create(
         self,
         slug: str,
+        wine_id: str,
         name: str,
-        country: str,
+        producer: str,
         region: str,
-        winery: str,
-        rating: float,
-        description: str,
-        source_url: str,
+        style: list[str],
+        color: str,
+        grapes: list[str],
+        year: int | None = None,
+        alcohol_percent: float | None = None,
+        image_url: str | None = None,
+        aliases: list[dict] = [],
+        search_text: str = "",
     ) -> Wine:
         logger.debug("Creating wine with slug={}", slug)
         
         wine = Wine(
             slug=slug,
+            wine_id=wine_id,
             name=name,
-            country=country,
+            producer=producer,
             region=region,
-            winery=winery,
-            rating=rating,
-            description=description,
-            source_url=source_url,
+            style=style,
+            color=color,
+            grapes=grapes,
+            year=year,
+            alcohol_percent=alcohol_percent,
+            image_url=image_url,
+            aliases=aliases,
+            search_text=search_text,
         )
         self._session.add(wine)
         await self._session.flush()
