@@ -78,7 +78,7 @@ class CVInferenceQueueListener:
             try:
                 await recognition_service.accept_cv_result(
                     task_id=message["task_id"],
-                    cv_response=message["cv_response"],
+                    cv_response=message["result"],
                 )
             except Exception as e:
                 logger.error("Error processing CV inference result for task_id={}, error={}, message={}", message.get("task_id"), e, message, exc_info=True)
@@ -96,7 +96,7 @@ class OCRInferenceQueueListener:
             try:
                 await recognition_service.accept_ocr_result(
                     task_id=message["task_id"],
-                    ocr_response=message["ocr_response"],
+                    ocr_response=message["result"],
                 )
             except Exception as e:
                 logger.error("Error processing OCR inference result for task_id={}, error={}, message={}", message.get("task_id"), e, message, exc_info=True)

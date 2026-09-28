@@ -65,13 +65,13 @@ class RecognitionService:
 
         logger.info("Sending recognition task to RabbitMQ queues task_id={} uploaded_image_id={}", task.id, uploaded_image_id)
         
-        logger.debug("Publishing task to inference queue={} task_id={}", self._inference_workers_config.publish_queue,)
+        logger.debug("Publishing task to inference queue={} task_id={}", self._inference_workers_config.publish_queue, task.id)
         await self._rabbitmq_client.publish_task(
             queue_name=self._inference_workers_config.publish_queue,
             payload=payload,
         )
 
-        logger.debug("Publishing task to OCR inference queue={} task_id={}", self._ocr_inference_workers_config.publish_queue,)
+        logger.debug("Publishing task to OCR inference queue={} task_id={}", self._ocr_inference_workers_config.publish_queue, task.id)
         await self._rabbitmq_client.publish_task(
             queue_name=self._ocr_inference_workers_config.publish_queue,
             payload=payload,
@@ -184,11 +184,35 @@ class RecognitionService:
         logger.debug("Resolving recognition result for task_id={}", task_id)
         result = await self._require_result(task_id)
 
+        cv_result_digestible = {
+            "task_id": task_id,
+            "results": result.cv_response,
+            "error": result.error_message,
+        }
+
+        logger.debug(
+            "CV result digestible for task_id={} cv_result_digestible={}",
+            task_id,
+            cv_result_digestible,
+        )
+
+        ocr_result_digestible = {
+            "task_id": task_id,
+            "result": result.ocr_response,
+            "error": result.error_message,
+        }
+
+
+        logger.debug(
+            "OCR result digestible for task_id={} ocr_result_digestible={}",
+            task_id,
+            ocr_result_digestible,
+        )
         cv_response = CVInferenceResponse.model_validate(
-            result.cv_response,
+            cv_result_digestible,
         )
         ocr_response = OCRInferenceResponse.model_validate(
-            result.ocr_response,
+            ocr_result_digestible,
         )
 
         cv_slug = self._resolver.get_cv_slug(cv_response)
@@ -197,14 +221,14 @@ class RecognitionService:
         cv_wine = None
 
         if cv_slug is not None:
-            cv_wine = await self._wine_repository.get_by_slug(
+            cv_wine = await self._get_or_fetch_wine(
                 cv_slug,
             )
 
         ocr_wine = None
 
         if ocr_slug is not None:
-            ocr_wine = await self._wine_repository.get_by_slug(
+            ocr_wine = await self._get_or_fetch_wine(
                 ocr_slug,
             )
 
@@ -294,5 +318,4 @@ class RecognitionService:
             ],
             error=result.error_message,
             finished_at=result.finished_at,
-            elapsed_time=(result.finished_at - result.created_at).total_seconds() if result.finished_at and result.status == "completed" else None
-        )
+            elapsed_time=(result.finished_at - result.created_at).total_seconds() if result.finished_at and result.status == "completed" else None)

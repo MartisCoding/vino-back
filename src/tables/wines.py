@@ -23,7 +23,7 @@ class Wine(Base):
     
     rating: Mapped[float] = mapped_column(Float, nullable=False)
     
-    description: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(String(4096), nullable=False)
     
     source_url: Mapped[str] = mapped_column(String(255), nullable=False)
     

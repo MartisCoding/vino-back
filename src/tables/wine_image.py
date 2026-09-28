@@ -16,7 +16,7 @@ class WineImage(Base):
         ForeignKey("wines.id"),
         nullable=False,
     )
-    wine_external_id: Mapped[str] = mapped_column(String(255), ForeignKey("wines.external_id"), nullable=False)
+    wine_external_id: Mapped[str] = mapped_column(String(255), ForeignKey("wines.slug"), nullable=False)
     
     object_key: Mapped[str] = mapped_column(String(1024), nullable=False)
     content_type: Mapped[str] = mapped_column(String(255), nullable=False)

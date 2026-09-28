@@ -16,6 +16,7 @@ from src.resources.queue_listener_factory import (
 )
 from src.routes.recognition import RecognitionController
 from src.services.factories import ServiceFactory
+from src.tables import Base
 
 
 class Application:
@@ -102,6 +103,16 @@ class Application:
         logger.debug("Checking PostgreSQL database connection")
         await self.resources.connection_manager.test_connection()
         logger.debug("PostgreSQL database connection successful")
+
+        logger.info("Creating database tables if they do not exist")
+
+        async with self.resources.connection_manager.acquire() as session:  # noqa: SIM117
+            async with session.bind.begin() as conn:
+                # For debugging i drop all tables and recreate them. In production, you should use migrations instead.
+                await conn.run_sync(Base.metadata.drop_all) #type: ignore
+                await conn.run_sync(Base.metadata.create_all) #type: ignore
+
+        logger.info("Database tables created successfully")
 
         logger.debug("Creating CV Inference Queue Listener")
         cv_listener = CVInferenceQueueListener(

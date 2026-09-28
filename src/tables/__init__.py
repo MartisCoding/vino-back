@@ -11,6 +11,8 @@ from src.tables.uploaded_images import UploadedImage
 from src.tables.wine_image import WineImage
 from src.tables.wines import Wine
 
+
+
 __all__ = [
     "Base",
     "RecognitionResult",

@@ -9,7 +9,7 @@ class WineDTO(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    external_id: str
+    slug: str
     name: str
     country: str
     region: str
@@ -22,7 +22,7 @@ class WineDTO(BaseModel):
 
 
 class ParsedWine(BaseModel):
-    external_id: str
+    slug: str
     name: str
     country: str
     region: str
