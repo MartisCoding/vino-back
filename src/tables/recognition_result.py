@@ -35,6 +35,7 @@ class RecognitionResult(Base):
                 "waiting_for_cv",
                 "resolving",
                 "fetching_wines",
+                "partially_resolved",
                 "completed",
                 "failed",
                 name="recognition_task_status",

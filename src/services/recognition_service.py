@@ -162,9 +162,7 @@ class RecognitionService:
             status=status,
         )
 
-        if status == "resolving":
-            await self._resolve(task_id)
-
+    
     async def accept_ocr_result(
         self,
         task_id: str,
@@ -203,9 +201,6 @@ class RecognitionService:
             ocr_response=ocr_response,
             status=status,
         )
-
-        if status == "resolving":
-            await self._resolve(task_id)
         
 
     async def _require_task(self, task_id: str) -> RecognitionTask:
@@ -281,14 +276,12 @@ class RecognitionService:
             ocr_wine=ocr_wine,
         )
 
-        if not resolution.resolved:
-
+        if resolution.status == "unresolved":
             logger.error(
                 "Recognition result resolution failed for task_id={} error={}",
                 task_id,
                 resolution.error,
             )
-
             await self._result_repository.update(
                 result_id=task_id,
                 status="failed",
@@ -297,10 +290,20 @@ class RecognitionService:
             )
             return
 
+        if resolution.status == "partially_resolved":
+            logger.info(
+                "Recognition partially resolved for task_id={} alternatives={}",
+                task_id,
+                resolution.alternatives,
+            )
+            final_status = "partially_resolved"
+        else:
+            final_status = "completed"
+
         await self._result_repository.update(
             result_id=task_id,
-            status="completed",
-            detected_slug=resolution.detected_slug,
+            status=final_status,
+            detected_slug=resolution.detected_slug,  # None для partially_resolved
             alternatives=resolution.alternatives,
             error_message=None,
             finished_at=datetime.utcnow(),
@@ -325,39 +328,37 @@ class RecognitionService:
             **parsed_wine.model_dump(),
         )
 
-    async def get_result(
-        self,
-        task_id: str,
-    ) -> RecognitionResponse:
+    async def get_result(self, task_id: str) -> RecognitionResponse:
         logger.debug("Fetching recognition result for task_id={}", task_id)
         result = await self._require_result(task_id)
 
-        detected_wine = None
+        # Both workers have answered, but nobody resolved yet -> do it now.
+        if result.status == "resolving":
+            await self._resolve(task_id)
+            result = await self._require_result(task_id)
 
+        detected_wine = None
         if result.detected_slug is not None:
-            detected_wine = await self._get_or_fetch_wine(
-                result.detected_slug,
-            )
+            detected_wine = await self._get_or_fetch_wine(result.detected_slug)
 
         alternatives: list[Wine] = []
-
         for slug in result.alternatives or []:
-            alternatives.append(
-                await self._get_or_fetch_wine(slug),
-            )
+            alternatives.append(await self._get_or_fetch_wine(slug))
+
+        finished = result.status in ("completed", "partially_resolved")
 
         return RecognitionResponse(
             task_id=task_id,
-            status=result.status, #type: ignore
+            status=result.status,  # type: ignore
             detected_wine=(
-                WineDTO.model_validate(detected_wine)
-                if detected_wine is not None
-                else None
+                WineDTO.model_validate(detected_wine) if detected_wine is not None else None
             ),
-            alternatives=[
-                WineDTO.model_validate(wine)
-                for wine in alternatives
-            ],
+            alternatives=[WineDTO.model_validate(w) for w in alternatives],
             error=result.error_message,
             finished_at=result.finished_at,
-            elapsed_time=(result.finished_at - result.created_at).total_seconds() if result.finished_at and result.status == "completed" else None)
+            elapsed_time=(
+                (result.finished_at - result.created_at).total_seconds()
+                if result.finished_at and finished
+                else None
+            ),
+        )

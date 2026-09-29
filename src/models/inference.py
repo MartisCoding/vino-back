@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, computed_field
 
 
 class RecognitionPayload(BaseModel):
@@ -112,12 +112,18 @@ class ResolutionSource(BaseModel):
         "both_agree",
         "ocr_priority",
         "cv_only",
+        "ocr_alternatives_only",
     ]
 
 
 class RecognitionResolution(BaseModel):
-    resolved: bool
+    status: Literal["resolved", "partially_resolved", "unresolved"]
     detected_slug: str | None = None
     alternatives: list[str] | None = None
     source: ResolutionSource | None = None
     error: str | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def resolved(self) -> bool:
+        return self.status == "resolved"

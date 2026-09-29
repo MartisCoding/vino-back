@@ -33,7 +33,7 @@ class RecognitionResolver:
         cv_wine: Wine | None,
         ocr_wine: Wine | None,
     ) -> RecognitionResolution:
-        # OCR has priority whenever it produced a usable result.
+        # 1. OCR has priority whenever it produced a usable result.
         if ocr_wine is not None:
             if cv_wine is not None and cv_wine.id == ocr_wine.id:
                 source, reason = "both", "both_agree"
@@ -41,7 +41,7 @@ class RecognitionResolver:
                 source, reason = "ocr", "ocr_priority"
 
             return RecognitionResolution(
-                resolved=True,
+                status="resolved",
                 detected_slug=ocr_wine.slug,
                 alternatives=self._collect_alternatives(
                     selected_slug=ocr_wine.slug,
@@ -54,10 +54,10 @@ class RecognitionResolver:
                 ),
             )
 
-        # OCR did not produce a usable wine, fallback to CV.
+        # 2. OCR did not produce a usable wine, fallback to CV.
         if cv_wine is not None:
             return RecognitionResolution(
-                resolved=True,
+                status="resolved",
                 detected_slug=cv_wine.slug,
                 alternatives=self._collect_alternatives(
                     selected_slug=cv_wine.slug,
@@ -67,8 +67,19 @@ class RecognitionResolver:
                 source=ResolutionSource(source="cv", reason="cv_only"),
             )
 
+        ocr_ranked = self._ranked_ocr_slugs(ocr_response, allow_unresolved=True)
+        if ocr_ranked:
+            cv_ranked = self._ranked_cv_slugs(cv_response)
+            return RecognitionResolution(
+                status="partially_resolved",
+                detected_slug=None,
+                alternatives=self._fuse(ocr_ranked, cv_ranked, selected_slug=None),
+                source=ResolutionSource(source="ocr", reason="ocr_alternatives_only"),
+            )
+
+        # 4. Nothing at all.
         return RecognitionResolution(
-            resolved=False,
+            status="unresolved",
             error="no_recognition_result",
         )
 
@@ -107,14 +118,23 @@ class RecognitionResolver:
     # ------------------------------------------------------------------
 
     def _collect_alternatives(
-        self,
-        selected_slug: str,
-        cv_response: CVInferenceResponse,
-        ocr_response: OCRInferenceResponse,
-    ) -> list[str]:
-        ocr_ranked = self._ranked_ocr_slugs(ocr_response)
-        cv_ranked = self._ranked_cv_slugs(cv_response)
+    self,
+    selected_slug: str | None,
+    cv_response: CVInferenceResponse,
+    ocr_response: OCRInferenceResponse,
+) -> list[str]:
+        return self._fuse(
+            self._ranked_ocr_slugs(ocr_response),
+            self._ranked_cv_slugs(cv_response),
+            selected_slug=selected_slug,
+        )
 
+    def _fuse(
+        self,
+        ocr_ranked: list[str],
+        cv_ranked: list[str],
+        selected_slug: str | None,
+    ) -> list[str]:
         scores: dict[str, float] = defaultdict(float)
 
         for rank, slug in enumerate(ocr_ranked):
@@ -123,7 +143,8 @@ class RecognitionResolver:
         for rank, slug in enumerate(cv_ranked):
             scores[slug] += self._cv_weight / (self._rrf_k + rank + 1)
 
-        scores.pop(selected_slug, None)
+        if selected_slug is not None:
+            scores.pop(selected_slug, None)
 
         ocr_pos = {slug: i for i, slug in enumerate(ocr_ranked)}
         cv_pos = {slug: i for i, slug in enumerate(cv_ranked)}
@@ -132,13 +153,8 @@ class RecognitionResolver:
         # Higher fused score first; ties -> better OCR rank, then better CV rank.
         ordered = sorted(
             scores,
-            key=lambda s: (
-                -scores[s],
-                ocr_pos.get(s, inf),
-                cv_pos.get(s, inf),
-            ),
+            key=lambda s: (-scores[s], ocr_pos.get(s, inf), cv_pos.get(s, inf)),
         )
-
         return ordered[: self._top_k]
 
     def _ranked_cv_slugs(self, response: CVInferenceResponse) -> list[str]:
@@ -151,10 +167,16 @@ class RecognitionResolver:
             r.payload.slug for r in results if r.score >= self._cv_min_score
         )
 
-    def _ranked_ocr_slugs(self, response: OCRInferenceResponse) -> list[str]:
+    def _ranked_ocr_slugs(
+        self,
+        response: OCRInferenceResponse,
+        allow_unresolved: bool = False,
+    ) -> list[str]:
         result = response.result
 
-        if result.error or result.status in ("unresolved", "error"):
+        if result.error or result.status == "error":
+            return []
+        if result.status == "unresolved" and not allow_unresolved:
             return []
 
         pool: list[OCRCandidate] = []
@@ -171,7 +193,7 @@ class RecognitionResolver:
                 best[candidate.slug] = candidate.match_score
 
         return sorted(best, key=lambda s: best[s], reverse=True)
-
+    
     @staticmethod
     def _unique(values: Iterable[str]) -> list[str]:
         return list(dict.fromkeys(values))

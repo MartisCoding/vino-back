@@ -63,13 +63,31 @@ class ImageService:
         )
         logger.info("Object uploaded to MinIO bucket={} object_key={}", self._image_bucket, object_key)
 
-    async def upload_client_image(self, image_bytes: bytes, content_type: str) -> UploadedImage:
-        logger.debug("Uploading client image size={} content_type={}", len(image_bytes), content_type)
+    async def upload_client_image(
+        self,
+        image_bytes: bytes,
+        content_type: str,
+        extension: str | None = None,
+    ) -> UploadedImage:
+        logger.debug(
+            "Uploading client image size={} content_type={}",
+            len(image_bytes),
+            content_type,
+        )
+
         self._ensure_bucket()
-        object_key = f"client/{uuid4()}{self._file_extension(content_type)}"
+
+        extension = extension or self._file_extension(content_type)
+
+        object_key = f"client/{uuid4()}{extension}"
+
         sha256_hash = self._hash_bytes(image_bytes)
 
-        self._put_object(object_key=object_key, image_bytes=image_bytes, content_type=content_type)
+        self._put_object(
+            object_key=object_key,
+            image_bytes=image_bytes,
+            content_type=content_type,
+        )
 
         image = await self._uploaded_image_repository.create(
             object_key=object_key,
@@ -77,7 +95,13 @@ class ImageService:
             size=len(image_bytes),
             sha256_hash=sha256_hash,
         )
-        logger.info("Client image persisted id={} object_key={}", image.id, image.object_key)
+
+        logger.info(
+            "Client image persisted id={} object_key={}",
+            image.id,
+            image.object_key,
+        )
+
         return image
 
     async def upload_reference_image(
