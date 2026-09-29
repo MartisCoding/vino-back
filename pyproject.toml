@@ -26,6 +26,7 @@ dependencies = [
     "minio==7.2.20",
     "multidict==6.9.1",
     "pamqp==4.0.1",
+    "pillow>=12.3.0",
     "propcache==0.5.4",
     "pycparser==3.0",
     "pycryptodome==3.23.0",

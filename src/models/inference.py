@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, computed_field
 
 
 class RecognitionPayload(BaseModel):
@@ -10,15 +10,20 @@ class RecognitionPayload(BaseModel):
 
 
 class CVRecognitionResult(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     id: int | str
+    version: int | None = None
     score: float
     payload: RecognitionPayload
+    vector: list[float] | dict | None = None
+    shard_key: str | int | None = None
+    order_value: float | int | None = None
 
 
 class CVInferenceResponse(BaseModel):
     task_id: str
     results: list[CVRecognitionResult]
-    expected_score: float | None = None
     error: str | None = None
 
 
@@ -31,20 +36,39 @@ class OCREvidence(BaseModel):
     field: str
     ocr_text: str
     catalog_key: str
-    ocr_indices: list[int]
+    ocr_indices: list[int] = []
     similarity: float
     weighted_similarity: float
     contribution: float
     matched_words: int | None = None
 
 
+class OCRAlias(BaseModel):
+    text: str
+    key: str
+    source: str
+
+
 class OCRCandidate(BaseModel):
+    schema_version: int | None = None
+
     wine_id: str
+    slug: str
     name: str
     producer: str | None = None
+    region: str | None = None
+    style: list[str] = []
+    color: str | None = None
+    grapes: list[str] = []
+    year: int | str | None = None
+    alcohol_percent: float | None = None
     image_url: str | None = None
+
+    aliases: list[OCRAlias] = []
+    search_text: str | None = None
+
     match_score: float
-    evidence: list[OCREvidence]
+    evidence: list[OCREvidence] = []
     evidence_coverage: float | None = None
 
 
@@ -66,7 +90,7 @@ class OCRResult(BaseModel):
     alternatives: list[OCRCandidate] = []
     candidates: list[OCRCandidate] = []
 
-    score_type: str
+    score_type: str | None = None
 
     image_path: str | None = None
     timing_seconds: OCRTiming | None = None
@@ -78,6 +102,7 @@ class OCRResult(BaseModel):
 class OCRInferenceResponse(BaseModel):
     task_id: str
     result: OCRResult
+    error: str | None = None
 
 
 class ResolutionSource(BaseModel):
@@ -87,12 +112,18 @@ class ResolutionSource(BaseModel):
         "both_agree",
         "ocr_priority",
         "cv_only",
+        "ocr_alternatives_only",
     ]
 
 
 class RecognitionResolution(BaseModel):
-    resolved: bool
+    status: Literal["resolved", "partially_resolved", "unresolved"]
     detected_slug: str | None = None
     alternatives: list[str] | None = None
     source: ResolutionSource | None = None
     error: str | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def resolved(self) -> bool:
+        return self.status == "resolved"

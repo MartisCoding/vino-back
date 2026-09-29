@@ -15,6 +15,7 @@ class RecognitionResponse(BaseModel):
         "waiting_for_ocr",
         "waiting_for_cv",
         "resolving",
+        "partially_resolved",
         "completed",
         "failed",
     ]
@@ -31,11 +32,12 @@ class RecognitionResponse(BaseModel):
 class CreateRecognitionTaskRequest(BaseModel):
     image_bytes: bytes = Field(min_length=1)
     content_type: str
+    extension: str | None = None
 
-    @field_validator("content_type")
-    @classmethod
-    def validate_content_type(cls, value: str) -> str:
-        if not value.startswith("image/"):
-            raise ValueError("Uploaded file must be an image")
+    # @field_validator("content_type")
+    # @classmethod
+    # def validate_content_type(cls, value: str) -> str:
+    #     if not value.startswith("image/") or "application/octet-stream" in value:
+    #         raise ValueError("Uploaded file must be an image")
 
-        return value
+    #     return value

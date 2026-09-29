@@ -18,12 +18,14 @@ class RecognitionResult(Base):
     )
 
     # Theese field are used to store the raw response data from workers
-    ocr_response: Mapped[dict[str, Any]] = mapped_column(
+    ocr_response: Mapped[dict[str, Any] | None] = mapped_column(
         JSON,
+        nullable=True,
     )
 
-    cv_response: Mapped[dict[str, Any]] = mapped_column(
+    cv_response: Mapped[dict[str, Any] | None] = mapped_column(
         JSON,
+        nullable=True,
     )
 
     status: Mapped[str] = mapped_column(
@@ -33,6 +35,7 @@ class RecognitionResult(Base):
                 "waiting_for_cv",
                 "resolving",
                 "fetching_wines",
+                "partially_resolved",
                 "completed",
                 "failed",
                 name="recognition_task_status",

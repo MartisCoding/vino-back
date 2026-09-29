@@ -123,7 +123,7 @@ class WineParser:
             )
 
         return ParsedWine(
-            external_id=external_id,
+            slug=external_id,
             name=name,
             country=country or "",
             region=region or "",

@@ -50,10 +50,12 @@ class ConnectionManager:
         logger.info("Database connection test successful")
 
     @asynccontextmanager
-    async def acquire(self) -> AsyncGenerator[AsyncSession, None]:
-        logger.debug("Acquiring database session")
+    async def acquire(self):
         async with self._session_factory() as session:
             try:
                 yield session
-            finally:
-                logger.debug("Database session released")
+                await session.commit()
+            except Exception as e:
+                logger.error("Rolling back and releasing database session due to exception exception={}", e, exc_info=True)
+                await session.rollback()
+                raise
